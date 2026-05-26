@@ -1,0 +1,224 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Confirme sua Presença · Andressa & Baruc</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Pinyon+Script&family=Cormorant+Garamond:ital,wght@0,300;0,400;1,300;1,400&family=DM+Sans:wght@300;400&display=swap" rel="stylesheet" />
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; background: #fff; }
+    html, body {
+      background: #fff !important;
+      color: #111;
+      font-family: 'DM Sans', sans-serif;
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 48px 24px;
+    }
+
+    @keyframes fadeUp {
+      from { opacity: 0; transform: translateY(16px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+    @keyframes checkDraw { to { stroke-dashoffset: 0; } }
+
+    .a1 { animation: fadeUp .5s .05s both; }
+    .a2 { animation: fadeUp .5s .15s both; }
+    .a3 { animation: fadeUp .5s .25s both; }
+    .a4 { animation: fadeUp .5s .35s both; }
+    .a5 { animation: fadeUp .5s .45s both; }
+
+    .wrap { width: 100%; max-width: 340px; text-align: center; }
+
+    .page { display: none; }
+    .page.active { display: block; }
+
+    /* names */
+    .names {
+      font-family: 'Pinyon Script', cursive;
+      font-size: clamp(48px, 12vw, 68px);
+      line-height: 1;
+      margin-bottom: 10px;
+    }
+
+    /* label */
+    .label {
+      font-size: 9px;
+      letter-spacing: 0.28em;
+      text-transform: uppercase;
+      color: #888;
+      margin-bottom: 24px;
+    }
+
+    /* divider */
+    .line {
+      border: none;
+      border-top: 1px solid #ddd;
+      margin: 24px 0;
+    }
+
+    /* cta */
+    .cta {
+      font-size: 9px;
+      letter-spacing: 0.28em;
+      text-transform: uppercase;
+      color: #888;
+      margin-bottom: 20px;
+    }
+
+    /* input */
+    input {
+      width: 100%;
+      border: 1px solid #ccc;
+      padding: 13px 18px;
+      font-family: 'Cormorant Garamond', serif;
+      font-style: italic;
+      font-size: 17px;
+      color: #111;
+      border-radius: 100px;
+      outline: none;
+      background: #fff;
+      margin-bottom: 10px;
+      transition: border-color .2s;
+    }
+    input:focus { border-color: #111; }
+    input::placeholder { color: #bbb; }
+
+    /* button */
+    button {
+      width: 100%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      background: #fff;
+      color: #111;
+      border: 1px solid #111;
+      padding: 13px 24px;
+      font-family: 'DM Sans', sans-serif;
+      font-size: 9px;
+      font-weight: 400;
+      letter-spacing: 0.28em;
+      text-transform: uppercase;
+      cursor: pointer;
+      border-radius: 100px;
+      transition: background .25s, color .25s;
+    }
+    button:hover { background: #111; color: #fff; }
+    button:hover svg { stroke: #fff; }
+    button:disabled { opacity: .4; cursor: not-allowed; }
+    button svg { transition: stroke .25s; }
+
+    /* success */
+    .success-name {
+      font-family: 'Pinyon Script', cursive;
+      font-size: clamp(42px, 10vw, 60px);
+      line-height: 1.1;
+      margin: 20px 0 14px;
+    }
+    .success-msg {
+      font-family: 'Cormorant Garamond', serif;
+      font-style: italic;
+      font-size: 16px;
+      line-height: 1.75;
+      color: #888;
+    }
+    .check-path {
+      stroke-dasharray: 40;
+      stroke-dashoffset: 40;
+      animation: checkDraw .45s .4s forwards cubic-bezier(.22,1,.36,1);
+    }
+
+    /* verse */
+    .verse {
+      margin-top: 32px;
+      font-family: 'Cormorant Garamond', serif;
+      font-style: italic;
+      font-size: 11px;
+      color: #ccc;
+    }
+  </style>
+</head>
+<body>
+<div class="wrap">
+
+  <div class="page active" id="page-form">
+
+
+    <h1 class="names a2">Andressa e Baruc</h1>
+    <p class="label a2">Cerimônia · 17 de outubro de 2026</p>
+
+    <hr class="line a3" />
+    <p class="cta a3">Confirme sua presença</p>
+
+    <div class="a4">
+      <input type="text" id="nome" placeholder="Seu nome completo" autocomplete="name" autofocus />
+    </div>
+
+    <div class="a5">
+      <button onclick="confirmar()">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none"
+             stroke="#111" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+          <polyline points="20 6 9 17 4 12"/>
+        </svg>
+        Confirmar presença
+      </button>
+    </div>
+
+    <p class="verse a5">"Portanto o que Deus uniu, não separe o homem." — Mt 19,6</p>
+  </div>
+
+  <div class="page" id="page-success">
+    <div class="a1">
+      <svg width="70" height="70" viewBox="0 0 70 70" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <circle cx="35" cy="35" r="33" stroke="#ddd" stroke-width="1"/>
+        <polyline class="check-path" points="20,36 30,46 50,26"
+          stroke="#111" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+      </svg>
+    </div>
+    <p class="label a2">Presença confirmada</p>
+    <p class="success-name a2" id="nome-confirmado"></p>
+    <p class="success-msg a3">
+      Sua presença foi registrada.<br/>
+      Até breve.
+    </p>
+    <p class="verse a4">"Portanto o que Deus uniu, não separe o homem." — Mt 19,6</p>
+  </div>
+
+</div>
+
+<script>
+  const APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxGgXNzO1uUT4vdS4_Zja8n3TFu_Z5SMXG90RPAOgLVSTRL-oxNPKBIxBHnoxo_wBP1/exec";
+
+  async function confirmar() {
+    const nome = document.getElementById("nome").value.trim();
+    const btn  = document.querySelector("button");
+    if (!nome) { document.getElementById("nome").focus(); return; }
+
+    btn.disabled = true;
+    btn.querySelector("span") && (btn.textContent = "Registrando...");
+
+    try {
+      await fetch(APPS_SCRIPT_URL, {
+        method: "POST", mode: "no-cors",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ nome, origem: "convite-pdf", timestamp: new Date().toISOString() })
+      });
+    } catch(e) {}
+
+    document.getElementById("nome-confirmado").textContent = nome;
+    document.getElementById("page-form").classList.remove("active");
+    document.getElementById("page-success").classList.add("active");
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }
+
+  document.addEventListener("keydown", e => {
+    if (e.key === "Enter" && document.getElementById("page-form").classList.contains("active")) confirmar();
+  });
+</script>
+</body>
+</html>
