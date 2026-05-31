@@ -1,6 +1,5 @@
 const { google } = require('googleapis');
 
-// Remove acentos, maiúsculas e caracteres especiais para comparação justa
 function normalizar(str) {
   return str
     .toLowerCase()
@@ -10,7 +9,6 @@ function normalizar(str) {
     .trim();
 }
 
-// Distância Jaro-Winkler implementada sem dependência externa
 function jaroWinkler(s1, s2) {
   if (s1 === s2) return 1;
   const len1 = s1.length, len2 = s2.length;
@@ -44,7 +42,6 @@ function jaroWinkler(s1, s2) {
   return jaro + prefix * 0.1 * (1 - jaro);
 }
 
-// Três camadas de match: exato → substring → fuzzy
 function encontrarMatch(nomeDigitado, listaConvidados) {
   const busca = normalizar(nomeDigitado);
   const palavrasBusca = busca.split(' ').filter(p => p.length >= 3);
@@ -55,21 +52,21 @@ function encontrarMatch(nomeDigitado, listaConvidados) {
 
   for (const convidado of listaConvidados) {
     const lista = normalizar(convidado.nome);
+    const palavrasLista = lista.split(' ').filter(p => p.length >= 3);
 
     // Camada 1: exato
     if (busca === lista) {
       return { convidado, score: 1, metodo: 'exato' };
     }
 
-    // Camada 2: substring (qualquer palavra com 3+ letras contida no outro)
-    const palavrasLista = lista.split(' ').filter(p => p.length >= 3);
-    const temSubstring = palavrasBusca.some(pb =>
-      palavrasLista.some(pl => pl.includes(pb) || pb.includes(pl))
+    // Camada 2: qualquer palavra da busca bate com qualquer palavra da lista
+    const temPalavraEmComum = palavrasBusca.some(pb =>
+      palavrasLista.some(pl => pl === pb || pl.includes(pb) || pb.includes(pl))
     );
-    if (temSubstring && 0.9 > melhorScore) {
+    if (temPalavraEmComum && 0.9 > melhorScore) {
       melhorScore = 0.9;
       melhorMatch = convidado;
-      melhorMetodo = 'substring';
+      melhorMetodo = 'palavra em comum';
     }
 
     // Camada 3: fuzzy Jaro-Winkler
@@ -86,7 +83,6 @@ function encontrarMatch(nomeDigitado, listaConvidados) {
 }
 
 module.exports = async function handler(req, res) {
-  // Permite chamadas do seu site (CORS)
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
@@ -99,7 +95,6 @@ module.exports = async function handler(req, res) {
   }
 
   try {
-    // Autentica com a conta de serviço via variável de ambiente
     const credentials = JSON.parse(process.env.GOOGLE_SERVICE_ACCOUNT_JSON);
     const auth = new google.auth.GoogleAuth({
       credentials,
@@ -108,13 +103,11 @@ module.exports = async function handler(req, res) {
     const sheets = google.sheets({ version: 'v4', auth });
     const spreadsheetId = process.env.SPREADSHEET_ID;
 
-    // Lê a aba Família (colunas A até F)
     const { data } = await sheets.spreadsheets.values.get({
       spreadsheetId,
       range: 'Família!A:F',
     });
 
-    // Monta lista ignorando cabeçalho e linhas sem número
     const linhas = data.values || [];
     const convidados = linhas
       .map((l, idx) => ({ linha: idx + 1, cols: l }))
@@ -132,7 +125,6 @@ module.exports = async function handler(req, res) {
     if (resultado) {
       const { convidado, metodo } = resultado;
 
-      // 1. Atualiza Status e Data na aba Família
       await sheets.spreadsheets.values.update({
         spreadsheetId,
         range: `Família!C${convidado.linhaSheet}:D${convidado.linhaSheet}`,
@@ -140,10 +132,9 @@ module.exports = async function handler(req, res) {
         requestBody: { values: [['Confirmado', agora]] },
       });
 
-      // 2. Pinta a linha de verde
       const meta = await sheets.spreadsheets.get({ spreadsheetId });
       const abaFamilia = meta.data.sheets.find(s => s.properties.title === 'Família');
-      
+
       await sheets.spreadsheets.batchUpdate({
         spreadsheetId,
         requestBody: {
@@ -167,7 +158,6 @@ module.exports = async function handler(req, res) {
         },
       });
 
-      // 3. Registra na aba Confirmações (Auto)
       await sheets.spreadsheets.values.append({
         spreadsheetId,
         range: "'Confirmações (Auto)'!A:D",
@@ -185,7 +175,6 @@ module.exports = async function handler(req, res) {
       });
     }
 
-    // Sem match: registra para revisão manual
     await sheets.spreadsheets.values.append({
       spreadsheetId,
       range: "'Confirmações (Auto)'!A:D",
