@@ -1,8 +1,0 @@
-{
-  "functions": {
-    "api/confirmar.js": {
-      "memory": 512,
-      "maxDuration": 15
-    }
-  }
-}
