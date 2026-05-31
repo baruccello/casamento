@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Confirmar Presença — Andressa & Baruc</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: Georgia, serif;
+      background: #fdf9f5;
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+    }
+    .card {
+      background: #fff;
+      border-radius: 16px;
+      padding: 48px 40px;
+      max-width: 440px;
+      width: 100%;
+      box-shadow: 0 2px 24px rgba(0,0,0,0.07);
+      text-align: center;
+    }
+    h1 { font-size: 22px; color: #2d2d2d; font-weight: normal; margin-bottom: 6px; }
+    .data { font-size: 13px; color: #999; margin-bottom: 32px; letter-spacing: 1px; }
+    label { display: block; text-align: left; font-size: 13px; color: #666; margin-bottom: 6px; font-family: sans-serif; }
+    input {
+      width: 100%;
+      padding: 12px 16px;
+      border: 1px solid #e0dbd5;
+      border-radius: 8px;
+      font-size: 15px;
+      font-family: sans-serif;
+      color: #2d2d2d;
+      margin-bottom: 16px;
+      transition: border-color 0.2s;
+    }
+    input:focus { outline: none; border-color: #b59a7a; }
+    button {
+      width: 100%;
+      padding: 14px;
+      background: #8b6c4f;
+      color: #fff;
+      border: none;
+      border-radius: 8px;
+      font-size: 15px;
+      font-family: sans-serif;
+      cursor: pointer;
+      letter-spacing: 0.5px;
+      transition: background 0.2s;
+    }
+    button:hover { background: #7a5d42; }
+    button:disabled { background: #ccc; cursor: not-allowed; }
+    #resposta {
+      margin-top: 20px;
+      font-size: 14px;
+      font-family: sans-serif;
+      padding: 14px;
+      border-radius: 8px;
+      display: none;
+    }
+    #resposta.sucesso { background: #edf7e6; color: #3a7230; }
+    #resposta.erro { background: #fef3f3; color: #a33030; }
+    #resposta.pendente { background: #fef8ec; color: #8a6300; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h1>Andressa & Baruc</h1>
+    <p class="data">17 · OUTUBRO · 2026</p>
+    <label for="nome">Seu nome completo</label>
+    <input type="text" id="nome" placeholder="Ex: Maria da Silva" autocomplete="name" />
+    <label for="telefone">Telefone (opcional)</label>
+    <input type="tel" id="telefone" placeholder="(71) 99999-9999" />
+    <button id="btn" onclick="confirmar()">Confirmar presença</button>
+    <p id="resposta"></p>
+  </div>
+
+  <script>
+    async function confirmar() {
+      const nome = document.getElementById('nome').value.trim();
+      const telefone = document.getElementById('telefone').value.trim();
+      const btn = document.getElementById('btn');
+      const resposta = document.getElementById('resposta');
+
+      if (!nome) {
+        resposta.textContent = 'Por favor, informe seu nome.';
+        resposta.className = 'erro';
+        resposta.style.display = 'block';
+        return;
+      }
+
+      btn.disabled = true;
+      btn.textContent = 'Confirmando...';
+      resposta.style.display = 'none';
+
+      try {
+        const res = await fetch('/api/confirmar', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ nome, telefone }),
+        });
+        const data = await res.json();
+
+        resposta.textContent = data.mensagem;
+        resposta.className = data.sucesso ? 'sucesso' : 'pendente';
+        resposta.style.display = 'block';
+
+        if (data.sucesso) {
+          btn.textContent = '✓ Confirmado';
+        } else {
+          btn.disabled = false;
+          btn.textContent = 'Confirmar presença';
+        }
+      } catch (e) {
+        resposta.textContent = 'Erro de conexão. Tente novamente.';
+        resposta.className = 'erro';
+        resposta.style.display = 'block';
+        btn.disabled = false;
+        btn.textContent = 'Confirmar presença';
+      }
+    }
+
+    document.getElementById('nome').addEventListener('keydown', e => {
+      if (e.key === 'Enter') confirmar();
+    });
+  </script>
+</body>
+</html>
