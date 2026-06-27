@@ -1,18 +1,19 @@
 const { google } = require('googleapis');
 
-// ─── NORMALIZAÇÃO ────────────────────────────────────────────────────────────
+// ─── NORMALIZAÇÃO ─────────────────────────────────────────────────────────────
 
 function normalizar(str) {
   return str
     .normalize('NFD')
     .replace(/[\u0300-\u036f]/g, '')
     .toLowerCase()
+    .replace(/pe\./g, 'pe ')        // Pe.Deivisson → pe deivisson
     .replace(/[^a-z0-9 ]/g, '')
     .replace(/\s+/g, ' ')
     .trim();
 }
 
-// ─── LEVENSHTEIN ─────────────────────────────────────────────────────────────
+// ─── LEVENSHTEIN ──────────────────────────────────────────────────────────────
 
 function levenshtein(a, b) {
   const m = a.length, n = b.length;
@@ -30,98 +31,106 @@ function levenshtein(a, b) {
 }
 
 function similaridade(a, b) {
-  const maxLen = Math.max(a.length, b.length);
-  if (maxLen === 0) return 1;
-  return 1 - levenshtein(a, b) / maxLen;
+  const max = Math.max(a.length, b.length);
+  if (max === 0) return 1;
+  return 1 - levenshtein(a, b) / max;
 }
 
-// ─── SCORE COMPOSTO ───────────────────────────────────────────────────────────
+// ─── NÍVEL DE MATCH EXATO ────────────────────────────────────────────────────
+// Retorna o nível de precisão do match (0 = nenhum, 3 = perfeito).
+// Prioridade garante que "João" não confirme "João Pedro" se "João" está na lista.
 
-function calcularScore(input, candidato) {
-  const normInput = normalizar(input);
-  const normCandidato = normalizar(candidato);
+function nivelExato(busca, candidato) {
+  // Nível 3: idêntico após normalização → máxima prioridade
+  if (busca === candidato) return 3;
+
+  // Nível 2: busca é prefixo do candidato ("joao pedro" bate "joao pedro oliveira")
+  if (candidato.startsWith(busca + ' ')) return 2;
+
+  // Nível 1: busca é um token isolado dentro do candidato ("franciele" em "franciele sena")
+  //          só entra se não houver match de nível superior
+  const tokens = candidato.split(' ');
+  if (tokens.includes(busca) && busca.length >= 3) return 1;
+
+  return 0;
+}
+
+// ─── SCORE FUZZY ─────────────────────────────────────────────────────────────
+
+function scoreFuzzy(busca, candidato) {
   const scores = [];
 
-  // A: comparação direta normalizada
-  scores.push(similaridade(normInput, normCandidato));
+  // Similaridade global
+  scores.push(similaridade(busca, candidato));
 
-  // B: input contido no candidato ("franciele" dentro de "franciele souza")
-  if (normCandidato.includes(normInput)) {
-    scores.push(0.5 + (normInput.length / normCandidato.length) * 0.5);
+  // Busca contida no candidato
+  if (candidato.includes(busca) && busca.length >= 3) {
+    scores.push(0.5 + (busca.length / candidato.length) * 0.5);
   }
 
-  // C: matching por tokens (palavras individuais), tolera ordem invertida
-  const tokensInput = normInput.split(' ').filter(t => t.length >= 2);
-  const tokensCandidato = normCandidato.split(' ');
-  let somaTokens = 0;
-  let tokensExatos = 0;
-
-  for (const ti of tokensInput) {
-    const melhor = Math.max(...tokensCandidato.map(tc => {
-      if (tc === ti) return 1;
-      if (tc.includes(ti) && ti.length >= 3) return 0.8;
-      return similaridade(ti, tc);
-    }));
-    if (melhor >= 0.85) tokensExatos++;
-    somaTokens += melhor;
+  // Token a token
+  const tokensBusca = busca.split(' ').filter(t => t.length >= 2);
+  const tokensCandidato = candidato.split(' ');
+  if (tokensBusca.length > 0) {
+    let soma = 0;
+    for (const tb of tokensBusca) {
+      const melhor = Math.max(...tokensCandidato.map(tc => similaridade(tb, tc)));
+      soma += melhor;
+    }
+    scores.push(soma / tokensBusca.length);
   }
 
-  if (tokensInput.length > 0) {
-    const scoreTokens = somaTokens / tokensInput.length;
-    const todosExatos = tokensExatos === tokensInput.length;
-    scores.push(Math.min(1, todosExatos ? scoreTokens * 1.1 : scoreTokens));
-  }
-
-  // D: primeiro nome com alto match → boost
-  const primeiroInput = normInput.split(' ')[0];
-  const primeiroCandidato = normCandidato.split(' ')[0];
-  if (primeiroInput && primeiroCandidato) {
-    const simPrimeiro = similaridade(primeiroInput, primeiroCandidato);
-    if (simPrimeiro > 0.85) scores.push(simPrimeiro * 0.95);
-  }
+  // Primeiro nome com match forte
+  const pb = busca.split(' ')[0];
+  const pc = candidato.split(' ')[0];
+  const simPrimeiro = similaridade(pb, pc);
+  if (simPrimeiro >= 0.85) scores.push(simPrimeiro);
 
   return Math.min(1, Math.max(...scores));
 }
 
-// ─── MATCH PRINCIPAL ─────────────────────────────────────────────────────────
+// ─── ENCONTRAR MATCHES ────────────────────────────────────────────────────────
+// Retorna um array com todos os convidados que batem (pode ser mais de um
+// quando há homônimos, ex: dois "Lucas" ou dois "Márcio").
 
-function encontrarMatch(nomeDigitado, listaConvidados) {
-  const THRESHOLD_EXATO  = 1.0;   // match perfeito após normalização
-  const THRESHOLD_FUZZY  = 0.70;  // mínimo para aceitar automaticamente
-  const THRESHOLD_AMBIG  = 0.55;  // zona de ambiguidade (registra mas não confirma)
+function encontrarMatches(nomeDigitado, listaConvidados) {
+  const busca = normalizar(nomeDigitado);
 
+  // 1ª PASSAGEM: exato por nível de prioridade
+  const comNivel = listaConvidados
+    .map(c => ({ convidado: c, nivel: nivelExato(busca, normalizar(c.nome)) }))
+    .filter(x => x.nivel > 0);
+
+  if (comNivel.length > 0) {
+    // Usa apenas o nível mais alto encontrado
+    const maxNivel = Math.max(...comNivel.map(x => x.nivel));
+    const matches = comNivel
+      .filter(x => x.nivel === maxNivel)
+      .map(x => x.convidado);
+    return { matches, metodo: 'exato', score: 1 };
+  }
+
+  // 2ª PASSAGEM: fuzzy — retorna apenas o melhor match
   let melhor = null;
-
   for (const convidado of listaConvidados) {
-    const score = calcularScore(nomeDigitado, convidado.nome);
-
+    const score = scoreFuzzy(busca, normalizar(convidado.nome));
     if (!melhor || score > melhor.score) {
       melhor = { convidado, score };
     }
   }
 
-  if (!melhor) return null;
-
-  const { score, convidado } = melhor;
-
-  if (score >= THRESHOLD_EXATO) {
-    return { convidado, score, metodo: 'exato' };
-  }
-
-  if (score >= THRESHOLD_FUZZY) {
-    return { convidado, score, metodo: `fuzzy (${(score * 100).toFixed(0)}%)` };
-  }
-
-  if (score >= THRESHOLD_AMBIG) {
-    // Retorna o candidato mais próximo, mas sinaliza como ambíguo
-    // A rota vai registrar e pedir revisão manual
-    return { convidado, score, metodo: 'ambíguo', ambiguo: true };
+  if (melhor && melhor.score >= 0.65) {
+    return {
+      matches: [melhor.convidado],
+      score: melhor.score,
+      metodo: `fuzzy (${(melhor.score * 100).toFixed(0)}%)`,
+    };
   }
 
   return null;
 }
 
-// ─── HANDLER ─────────────────────────────────────────────────────────────────
+// ─── HANDLER ──────────────────────────────────────────────────────────────────
 
 module.exports = async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -161,85 +170,69 @@ module.exports = async function handler(req, res) {
       }));
 
     const agora = new Date().toLocaleString('pt-BR', { timeZone: 'America/Bahia' });
-    const resultado = encontrarMatch(nome.trim(), convidados);
+    const resultado = encontrarMatches(nome.trim(), convidados);
 
-    // ── MATCH AMBÍGUO: registra, não confirma ─────────────────────────────
-    if (resultado?.ambiguo) {
-      await sheets.spreadsheets.values.append({
-        spreadsheetId,
-        range: "'Confirmações (Auto)'!A:D",
-        valueInputOption: 'USER_ENTERED',
-        requestBody: {
-          values: [[
-            agora,
-            nome.trim(),
-            telefone || '',
-            `⚠️ AMBÍGUO — possível match: ${resultado.convidado.nome} (${(resultado.score * 100).toFixed(0)}%) — revisar manualmente`,
-          ]],
-        },
-      });
-
-      return res.status(200).json({
-        sucesso: false,
-        mensagem: 'Não conseguimos localizar seu nome com certeza. Sua confirmação foi registrada e verificaremos manualmente. Fique tranquilo(a)! 💍',
-      });
-    }
-
-    // ── MATCH ENCONTRADO (exato ou fuzzy confiável) ───────────────────────
+    // ── MATCH ENCONTRADO ────────────────────────────────────────────────────
     if (resultado) {
-      const { convidado, metodo } = resultado;
-
-      await sheets.spreadsheets.values.update({
-        spreadsheetId,
-        range: `Família!C${convidado.linhaSheet}:D${convidado.linhaSheet}`,
-        valueInputOption: 'USER_ENTERED',
-        requestBody: { values: [['Confirmado', agora]] },
-      });
-
+      const { matches, metodo } = resultado;
       const meta = await sheets.spreadsheets.get({ spreadsheetId });
       const abaFamilia = meta.data.sheets.find(s => s.properties.title === 'Família');
 
-      await sheets.spreadsheets.batchUpdate({
-        spreadsheetId,
-        requestBody: {
-          requests: [{
-            repeatCell: {
-              range: {
-                sheetId: abaFamilia.properties.sheetId,
-                startRowIndex: convidado.linhaSheet - 1,
-                endRowIndex: convidado.linhaSheet,
-                startColumnIndex: 0,
-                endColumnIndex: 6,
-              },
-              cell: {
-                userEnteredFormat: {
-                  backgroundColor: { red: 0.714, green: 0.843, blue: 0.659 },
-                },
-              },
-              fields: 'userEnteredFormat.backgroundColor',
-            },
-          }],
-        },
-      });
+      for (const convidado of matches) {
+        // Atualiza status e data
+        await sheets.spreadsheets.values.update({
+          spreadsheetId,
+          range: `Família!C${convidado.linhaSheet}:D${convidado.linhaSheet}`,
+          valueInputOption: 'USER_ENTERED',
+          requestBody: { values: [['Confirmado', agora]] },
+        });
 
+        // Pinta de verde
+        await sheets.spreadsheets.batchUpdate({
+          spreadsheetId,
+          requestBody: {
+            requests: [{
+              repeatCell: {
+                range: {
+                  sheetId: abaFamilia.properties.sheetId,
+                  startRowIndex: convidado.linhaSheet - 1,
+                  endRowIndex: convidado.linhaSheet,
+                  startColumnIndex: 0,
+                  endColumnIndex: 6,
+                },
+                cell: {
+                  userEnteredFormat: {
+                    backgroundColor: { red: 0.714, green: 0.843, blue: 0.659 },
+                  },
+                },
+                fields: 'userEnteredFormat.backgroundColor',
+              },
+            }],
+          },
+        });
+      }
+
+      // Log na aba de confirmações
+      const nomesConfirmados = matches.map(c => c.nome).join(', ');
       await sheets.spreadsheets.values.append({
         spreadsheetId,
         range: "'Confirmações (Auto)'!A:D",
         valueInputOption: 'USER_ENTERED',
         requestBody: {
-          values: [[agora, nome.trim(), telefone || '', `Match: ${convidado.nome} via ${metodo}`]],
+          values: [[agora, nome.trim(), telefone || '', `Match: ${nomesConfirmados} via ${metodo}`]],
         },
       });
 
+      const nomeExibido = matches.length === 1 ? matches[0].nome : nomesConfirmados;
       return res.status(200).json({
         sucesso: true,
-        mensagem: `Presença de ${convidado.nome} confirmada! Nos vemos no dia 17 de outubro 💍`,
-        match: convidado.nome,
+        mensagem: `Presença de ${nomeExibido} confirmada! Nos vemos no dia 17 de outubro 💍`,
+        match: nomesConfirmados,
         metodo,
       });
     }
 
-    // ── SEM MATCH ─────────────────────────────────────────────────────────
+    // ── SEM MATCH ───────────────────────────────────────────────────────────
     await sheets.spreadsheets.values.append({
       spreadsheetId,
       range: "'Confirmações (Auto)'!A:D",
