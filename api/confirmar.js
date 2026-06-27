@@ -7,7 +7,7 @@ function normalizar(str) {
     .normalize('NFD')
     .replace(/[\u0300-\u036f]/g, '')
     .toLowerCase()
-    .replace(/pe\./g, 'pe ')        // Pe.Deivisson → pe deivisson
+    .replace(/pe\./g, 'pe ')
     .replace(/[^a-z0-9 ]/g, '')
     .replace(/\s+/g, ' ')
     .trim();
@@ -37,21 +37,12 @@ function similaridade(a, b) {
 }
 
 // ─── NÍVEL DE MATCH EXATO ────────────────────────────────────────────────────
-// Retorna o nível de precisão do match (0 = nenhum, 3 = perfeito).
-// Prioridade garante que "João" não confirme "João Pedro" se "João" está na lista.
 
 function nivelExato(busca, candidato) {
-  // Nível 3: idêntico após normalização → máxima prioridade
   if (busca === candidato) return 3;
-
-  // Nível 2: busca é prefixo do candidato ("joao pedro" bate "joao pedro oliveira")
   if (candidato.startsWith(busca + ' ')) return 2;
-
-  // Nível 1: busca é um token isolado dentro do candidato ("franciele" em "franciele sena")
-  //          só entra se não houver match de nível superior
   const tokens = candidato.split(' ');
   if (tokens.includes(busca) && busca.length >= 3) return 1;
-
   return 0;
 }
 
@@ -59,39 +50,27 @@ function nivelExato(busca, candidato) {
 
 function scoreFuzzy(busca, candidato) {
   const scores = [];
-
-  // Similaridade global
   scores.push(similaridade(busca, candidato));
-
-  // Busca contida no candidato
   if (candidato.includes(busca) && busca.length >= 3) {
     scores.push(0.5 + (busca.length / candidato.length) * 0.5);
   }
-
-  // Token a token
   const tokensBusca = busca.split(' ').filter(t => t.length >= 2);
   const tokensCandidato = candidato.split(' ');
   if (tokensBusca.length > 0) {
     let soma = 0;
     for (const tb of tokensBusca) {
-      const melhor = Math.max(...tokensCandidato.map(tc => similaridade(tb, tc)));
-      soma += melhor;
+      soma += Math.max(...tokensCandidato.map(tc => similaridade(tb, tc)));
     }
     scores.push(soma / tokensBusca.length);
   }
-
-  // Primeiro nome com match forte
   const pb = busca.split(' ')[0];
   const pc = candidato.split(' ')[0];
   const simPrimeiro = similaridade(pb, pc);
   if (simPrimeiro >= 0.85) scores.push(simPrimeiro);
-
   return Math.min(1, Math.max(...scores));
 }
 
 // ─── ENCONTRAR MATCHES ────────────────────────────────────────────────────────
-// Retorna um array com todos os convidados que batem (pode ser mais de um
-// quando há homônimos, ex: dois "Lucas" ou dois "Márcio").
 
 function encontrarMatches(nomeDigitado, listaConvidados) {
   const busca = normalizar(nomeDigitado);
@@ -102,21 +81,16 @@ function encontrarMatches(nomeDigitado, listaConvidados) {
     .filter(x => x.nivel > 0);
 
   if (comNivel.length > 0) {
-    // Usa apenas o nível mais alto encontrado
     const maxNivel = Math.max(...comNivel.map(x => x.nivel));
-    const matches = comNivel
-      .filter(x => x.nivel === maxNivel)
-      .map(x => x.convidado);
+    const matches = comNivel.filter(x => x.nivel === maxNivel).map(x => x.convidado);
     return { matches, metodo: 'exato', score: 1 };
   }
 
-  // 2ª PASSAGEM: fuzzy — retorna apenas o melhor match
+  // 2ª PASSAGEM: fuzzy
   let melhor = null;
   for (const convidado of listaConvidados) {
     const score = scoreFuzzy(busca, normalizar(convidado.nome));
-    if (!melhor || score > melhor.score) {
-      melhor = { convidado, score };
-    }
+    if (!melhor || score > melhor.score) melhor = { convidado, score };
   }
 
   if (melhor && melhor.score >= 0.65) {
@@ -153,9 +127,11 @@ module.exports = async function handler(req, res) {
     const sheets = google.sheets({ version: 'v4', auth });
     const spreadsheetId = process.env.SPREADSHEET_ID;
 
+    // Lê da aba "Lista Completa" que contém TODOS os convidados
+    // Estrutura: A=#  B=Nome  C=Grupo  D=Status  E=Data  F=Telefone  G=Observações
     const { data } = await sheets.spreadsheets.values.get({
       spreadsheetId,
-      range: 'Família!A:F',
+      range: 'Lista Completa!A:G',
     });
 
     const linhas = data.values || [];
@@ -166,7 +142,8 @@ module.exports = async function handler(req, res) {
         linhaSheet: linha,
         numero: cols[0],
         nome: cols[1] || '',
-        status: cols[2] || '',
+        grupo: cols[2] || '',
+        status: cols[3] || '',   // col D
       }));
 
     const agora = new Date().toLocaleString('pt-BR', { timeZone: 'America/Bahia' });
@@ -176,29 +153,29 @@ module.exports = async function handler(req, res) {
     if (resultado) {
       const { matches, metodo } = resultado;
       const meta = await sheets.spreadsheets.get({ spreadsheetId });
-      const abaFamilia = meta.data.sheets.find(s => s.properties.title === 'Família');
+      const abaListaCompleta = meta.data.sheets.find(s => s.properties.title === 'Lista Completa');
 
       for (const convidado of matches) {
-        // Atualiza status e data
+        // Escreve Status (col D) e Data (col E)
         await sheets.spreadsheets.values.update({
           spreadsheetId,
-          range: `Família!C${convidado.linhaSheet}:D${convidado.linhaSheet}`,
+          range: `'Lista Completa'!D${convidado.linhaSheet}:E${convidado.linhaSheet}`,
           valueInputOption: 'USER_ENTERED',
           requestBody: { values: [['Confirmado', agora]] },
         });
 
-        // Pinta de verde
+        // Pinta de verde (colunas A:G = 0 a 7)
         await sheets.spreadsheets.batchUpdate({
           spreadsheetId,
           requestBody: {
             requests: [{
               repeatCell: {
                 range: {
-                  sheetId: abaFamilia.properties.sheetId,
+                  sheetId: abaListaCompleta.properties.sheetId,
                   startRowIndex: convidado.linhaSheet - 1,
                   endRowIndex: convidado.linhaSheet,
                   startColumnIndex: 0,
-                  endColumnIndex: 6,
+                  endColumnIndex: 7,
                 },
                 cell: {
                   userEnteredFormat: {
@@ -212,7 +189,6 @@ module.exports = async function handler(req, res) {
         });
       }
 
-      // Log na aba de confirmações
       const nomesConfirmados = matches.map(c => c.nome).join(', ');
       await sheets.spreadsheets.values.append({
         spreadsheetId,
